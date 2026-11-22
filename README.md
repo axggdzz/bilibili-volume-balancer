@@ -2,6 +2,8 @@
 
 一个 Chrome / Edge 扩展：自动测量 B 站网页视频的响度，把「这个 UP 主声音特别小、那个 UP 主声音特别大」拉回到同一水平。
 
+[GitHub 仓库](https://github.com/axggdzz/bilibili-volume-balancer) · [下载最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest)
+
 它不是简单地把音量调大，而是按 **EBU R128 / ITU-R BS.1770** 测量视频的整体响度（LUFS），再施加一个整体增益，并用限幅器保护峰值。这样不会把视频本身的动态范围压扁。
 
 ![控制面板](docs/panel.png)
@@ -14,7 +16,7 @@
 
 ## 安装
 
-不需要编译，直接加载文件夹。
+不需要编译。先从 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 下载 `bilibili-volume-balancer.zip` 并解压，然后：
 
 ### Edge
 
