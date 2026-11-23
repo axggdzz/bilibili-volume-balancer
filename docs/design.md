@@ -19,7 +19,7 @@
 
 ## 2. 目标
 
-- 在 Chromium 桌面浏览器上覆盖 B 站网页播放器。
+- 在桌面版 Chrome / Edge / Firefox 上覆盖 B 站网页播放器。
 - 对每个视频测一个稳定的 integrated loudness。
 - 把不同视频拉向同一个目标（默认 `-16 LUFS`），允许用户选 `-20 / -18 / -16 / -14`。
 - 不破坏 B 站原有控件：播放/暂停、进度条、音量条、全屏、弹幕都不受影响。
@@ -68,6 +68,23 @@
 `AnalyserNode` 只能拿到当前 FFT 窗口的时域数据，没有标准的 400 ms 块、绝对/相对门限；在主线程轮询还会受定时器抖动影响。`AudioWorklet` 可以逐样本处理，块边界精确，适合做 BS.1770。
 
 保留 `AnalyserNode` 作为兜底：如果 `audioWorklet.addModule()` 被浏览器/扩展资源策略拦截，就退化为 RMS 近似测量。
+
+### 跨浏览器加载 Worklet
+
+Worklet 模块的取源规则和普通脚本不同：它由音频线程按模块脚本抓取，CORS/principal 检查更严。三种浏览器的差异主要在扩展资源上：
+
+| 路径 | Chromium | Firefox |
+|---|---|---|
+| `addModule(chrome-extension://…)` / `moz-extension://…` | 可用 | 可用（扩展资源在 `web_accessible_resources` 中） |
+| `fetch(扩展 URL)` 后转 Blob | 可用 | 可用（内容脚本带扩展权限，fetch 不受页面 CORS 限制） |
+| 兼容模式（`AnalyserNode`） | 兜底 | 兜底 |
+
+实现按"直接加载 → Blob → 兼容模式"顺序退让，并把实际走通的路径记在 `state.workletMode`（`direct` / `blob`）里，方便排查。
+
+另外两处 Firefox 差异也做了适配：
+
+- **存储 API**：Firefox 的 `browser.*` 是 promise 风格，`chrome.*` 只有回调风格；Chromium 只有 `chrome.*`。`content.js` 启动时探测一次，之后统一走 `areaGet` / `areaSet`，取不到扩展 API（例如页面内注入的测试页）时退回 `localStorage`。
+- **清单**：Firefox 需要 `browser_specific_settings.gecko.id` 才能签名，且从 2025-11 起上传 AMO 必须声明 `data_collection_permissions`（本项目为 `required: ["none"]`）。这些键 Chrome 会忽略，所以发布包按浏览器各生成一份。
 
 ---
 
@@ -131,6 +148,15 @@
 音量这一项很关键：`MediaElementAudioSourceNode` 的输出会随 `<video>.volume` 变化，测量值也会跟着变。如果直接拿新音量去补偿旧的 integrated 历史，会算出错误增益。实现上在 `volumechange` 后先暂停自适应，250 ms 稳定后清空测量历史，让新音量下的 integrated 重新建立；这样增益保持不变，用户调音量仍然是"调音量"，不会被扩展反着补回去。
 
 这验证了几件关键的事：`createMediaElementSource` 能接管视频、扩展资源能加载进 AudioWorklet、44.1 kHz 下系数正确、增益方向正确。
+
+Firefox 用另一套测试（`test/e2e/run-firefox.mjs`）：`web-ext` 把仓库文件临时安装成扩展（manifest 的 matches 换成 `http://127.0.0.1/`），无头 Firefox 160 打开测试页，内容脚本由浏览器真正注入，页面再把面板读数回传。实测目标 `-16 LUFS`、采样率 `48 kHz`：
+
+| 时间点 | 视频响度 | 施加增益 |
+|---|---|---|
+| 安静段约 8 s | -41.7 LUFS | +15.0 dB（达到提升上限） |
+| 大声段约 22 s | -11.8 LUFS | -4.0 dB |
+
+面板状态、存储读写、`moz-extension://` 资源加载都正常，没有退到 `AnalyserNode` 兼容模式。两条浏览器路径都走通了，说明清单、内容脚本、Web Audio 图在 Gecko 上不需要单独的实现分支。
 
 另外用加载了扩展的 Edge 157 打开了真实 B 站视频 `BV1GJ411x7h7`：面板在 12 秒内出现，读取到 `-13.3 LUFS`，施加 `-2.4 dB`，页面控制台没有报错。这说明线上 B 站播放器的 `#bilibili-player`、MSE `blob:` 视频源和扩展资源加载路径都能正常工作。B 站播放器 DOM 仍可能随改版变化，所以 `findMainVideo` 保留多个选择器和尺寸兜底。
 
@@ -248,5 +274,5 @@
 1. **真峰值限幅 Worklet**：look-ahead 5 ms，ceiling `-1 dBTP`，替代 `DynamicsCompressor`。
 2. **按 UP 主先验**：用历史中位数作为初始值，缩短首次校正时间。
 3. **系统级版本**：Rust + WASAPI + 虚拟声卡，覆盖 B 站 App 和本地播放器。
-4. **Firefox 支持**：主要是 manifest 和 worklet 资源加载差异。
+4. **上架 AMO 与 Chrome Web Store**：签名后 Firefox 用户不再需要临时加载。
 5. **可视化**：显示 3 秒响度曲线，让用户看到"这个视频确实比别的轻 8 dB"。

@@ -18,6 +18,32 @@
 
   const IS_TEST = Boolean(window.__BVB_TEST__);
   const LOG_PREFIX = '[B站音量均衡]';
+
+  /**
+   * 扩展 API 适配：
+   *   - Firefox 内容脚本里 `browser.*` 是 promise 风格，`chrome.*` 只有回调风格；
+   *   - Chrome / Edge 只有 `chrome.*`（回调最稳，MV3 的 storage 也支持 promise）；
+   *   - 页面里直接注入 content.js（端到端测试）时两个都不存在，退化为 localStorage。
+   */
+  function detectExtApi() {
+    try {
+      if (typeof browser !== 'undefined' && browser && browser.runtime && browser.runtime.id) {
+        return { api: browser, promises: true, name: 'firefox' };
+      }
+    } catch {
+      // 跨域/权限异常时继续尝试 chrome
+    }
+    try {
+      if (typeof chrome !== 'undefined' && chrome && chrome.runtime && chrome.runtime.id) {
+        return { api: chrome, promises: false, name: 'chromium' };
+      }
+    } catch {
+      // 两端都不可用，按普通页面处理
+    }
+    return null;
+  }
+
+  const extApi = detectExtApi();
   const DEFAULT_TARGET_LUFS = -16;
   const TARGET_PRESETS = [-20, -18, -16, -14];
   const MAX_GAIN_DB = 15;
@@ -59,6 +85,7 @@
     volumeTimer: null,
     sourceCache: new WeakMap(),
     fallbackMode: false,
+    workletMode: '',
     panel: null,
     els: null,
     tickTimer: null,
@@ -72,13 +99,37 @@
   // 存储
   // ---------------------------------------------------------------------------
 
+  function storageArea() {
+    if (IS_TEST || !extApi) return null;
+    return (extApi.api.storage && extApi.api.storage.local) || null;
+  }
+
+  function areaGet(area, keys) {
+    if (extApi.promises) return area.get(keys);
+    return new Promise((resolve) => {
+      area.get(keys, (value) => {
+        void (extApi.api.runtime && extApi.api.runtime.lastError);
+        resolve(value || {});
+      });
+    });
+  }
+
+  function areaSet(area, items) {
+    if (extApi.promises) return area.set(items);
+    return new Promise((resolve) => {
+      area.set(items, () => {
+        void (extApi.api.runtime && extApi.api.runtime.lastError);
+        resolve();
+      });
+    });
+  }
+
   const storage = {
     async get(key, fallback) {
-      if (!IS_TEST && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      const area = storageArea();
+      if (area) {
         try {
-          const result = await new Promise((resolve) => {
-            chrome.storage.local.get([key], (value) => resolve(value || {}));
-          });
+          const result = await areaGet(area, [key]);
           return Object.prototype.hasOwnProperty.call(result, key) ? result[key] : fallback;
         } catch (error) {
           console.warn(LOG_PREFIX, '读取设置失败', error);
@@ -93,11 +144,10 @@
     },
 
     async set(key, value) {
-      if (!IS_TEST && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      const area = storageArea();
+      if (area) {
         try {
-          await new Promise((resolve) => {
-            chrome.storage.local.set({ [key]: value }, () => resolve());
-          });
+          await areaSet(area, { [key]: value });
           return;
         } catch (error) {
           console.warn(LOG_PREFIX, '保存设置失败', error);
@@ -709,30 +759,61 @@
 
   function getWorkletUrl() {
     if (window.__BVB_WORKLET_URL__) return window.__BVB_WORKLET_URL__;
-    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-      return chrome.runtime.getURL('src/loudness-worklet.js');
+    const runtime = extApi && extApi.api.runtime;
+    if (runtime && runtime.getURL) {
+      // Chromium 得到 chrome-extension://…，Firefox 得到 moz-extension://…
+      return runtime.getURL('src/loudness-worklet.js');
     }
     return new URL('loudness-worklet.js', location.href).href;
   }
 
+  async function fetchWorkletCode(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`读取 worklet 失败：HTTP ${response.status}`);
+    return response.text();
+  }
+
+  /**
+   * 加载 AudioWorklet 模块。
+   *
+   * Chromium 可以直接把扩展 URL 交给 addModule；Firefox 对 worklet 模块的取源
+   * 和 blob 的 principal 更严格，所以按顺序退让：
+   *   1. 扩展 URL（chrome-extension:// / moz-extension://）；
+   *   2. 先用扩展权限 fetch 源码，再转成 Blob URL 加载。
+   * 两条路径都失败时，调用方会退到 AnalyserNode 兼容测量。
+   */
   async function loadWorklet(ctx) {
-    if (ctx.__bvbWorkletLoaded) return;
+    if (ctx.__bvbWorkletLoaded) return state.workletMode || 'direct';
     const url = getWorkletUrl();
+    const failures = [];
+
     try {
       await ctx.audioWorklet.addModule(url);
-    } catch (firstError) {
-      // 某些浏览器的扩展资源会受 CORS 限制，退回到 Blob URL 再试一次。
-      const response = await fetch(url);
-      if (!response.ok) throw firstError;
-      const code = await response.text();
+      ctx.__bvbWorkletLoaded = true;
+      state.workletMode = 'direct';
+      return 'direct';
+    } catch (error) {
+      failures.push(`直接加载：${(error && error.message) || error}`);
+      console.warn(LOG_PREFIX, 'AudioWorklet 直接加载失败，改用 Blob URL', error);
+    }
+
+    try {
+      const code = await fetchWorkletCode(url);
       const blobUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
       try {
         await ctx.audioWorklet.addModule(blobUrl);
       } finally {
         setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
       }
+      ctx.__bvbWorkletLoaded = true;
+      state.workletMode = 'blob';
+      return 'blob';
+    } catch (error) {
+      failures.push(`Blob 加载：${(error && error.message) || error}`);
+      console.warn(LOG_PREFIX, 'AudioWorklet Blob 加载也失败', error);
     }
-    ctx.__bvbWorkletLoaded = true;
+
+    throw new Error(failures.join('；'));
   }
 
   async function ensureContext() {
@@ -1220,6 +1301,10 @@
       meterData: state.meterData,
       usingCache: state.usingCache,
       statusText: state.els ? state.els.status.textContent : '',
+      footText: state.els ? state.els.foot.textContent : '',
+      workletMode: state.workletMode,
+      fallbackMode: state.fallbackMode,
+      extApi: extApi ? extApi.name : 'page',
       unsupportedReason: state.unsupportedReason,
     });
     window.__bvbForceAttach = () => {

@@ -1,6 +1,6 @@
 # B站音量均衡器
 
-一个 Chrome / Edge 扩展：自动测量 B 站网页视频的响度，把「这个 UP 主声音特别小、那个 UP 主声音特别大」拉回到同一水平。
+一个 Chrome / Edge / Firefox 扩展：自动测量 B 站网页视频的响度，把「这个 UP 主声音特别小、那个 UP 主声音特别大」拉回到同一水平。
 
 [GitHub 仓库](https://github.com/axggdzz/bilibili-volume-balancer) · [下载最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest)
 
@@ -8,7 +8,7 @@
 
 ![控制面板](docs/panel.png)
 
-> 当前版本：`0.1.0`，面向桌面版 Chromium 浏览器的 B 站网页播放器。B 站 App、手机浏览器、番剧 DRM 内容暂不支持。
+> 当前版本：`0.2.0`，面向桌面版 Chrome / Edge / Firefox 的 B 站网页播放器。B 站 App、手机浏览器、番剧 DRM 内容暂不支持。
 >
 > 这是一个非官方项目，与哔哩哔哩无隶属关系。「B站 / 哔哩哔哩 / Bilibili」等名称和页面元素的权利归其权利人所有；本项目不下载、不修改、不重新分发 B 站内容。文档截图仅用于说明扩展功能。
 
@@ -16,20 +16,46 @@
 
 ## 安装
 
-不需要编译。先从 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 下载 `bilibili-volume-balancer.zip` 并解压，然后：
+不需要编译，也不依赖任何 npm 包。从 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 下载对应浏览器的包并解压：
 
-### Edge
+| 浏览器 | 下载文件 |
+|---|---|
+| Chrome / Edge | `bilibili-volume-balancer-chrome.zip` |
+| Firefox | `bilibili-volume-balancer-firefox.zip` |
 
-1. 打开 `edge://extensions/`
-2. 打开左下角「开发人员模式」
-3. 点击「加载解压缩的扩展」
-4. 选择本目录 `bilibili-volume-balancer`
-5. 打开任意 B 站视频页，例如 `https://www.bilibili.com/video/BV...`
-6. **在页面上点一下**（浏览器的自动播放策略要求一次用户手势），右下角会出现控制面板
+两个包的内容只有 `manifest.json` 里的 `browser_specific_settings` 不同：Chrome 包去掉了它（避免 Chrome 报未知键警告），Firefox 包保留 gecko id 与数据收集声明。
+
+也可以直接加载仓库根目录：根目录的 `manifest.json` 同时兼容三种浏览器，Chrome / Edge 会忽略 `browser_specific_settings`，只是扩展页会多一条「Unrecognized manifest key」提示，不影响功能。
 
 ### Chrome
 
-步骤相同，地址换成 `chrome://extensions/`，同样开启「开发者模式」→「加载已解压的扩展程序」。
+1. 打开 `chrome://extensions/`
+2. 打开右上角「开发者模式」
+3. 点击「加载已解压的扩展程序」
+4. 选择解压后的目录（或仓库根目录）
+5. 打开任意 B 站视频页，例如 `https://www.bilibili.com/video/BV...`
+6. **在页面上点一下**（浏览器的自动播放策略要求一次用户手势），右下角会出现控制面板
+
+### Edge
+
+步骤相同，地址换成 `edge://extensions/`，同样开启「开发人员模式」→「加载解压缩的扩展」。
+
+### Firefox
+
+Firefox 正式版只安装**已签名**的扩展，所以分两种情况：
+
+**临时加载（自用、开发调试，最省事）**
+
+1. 地址栏打开 `about:debugging#/runtime/this-firefox`
+2. 点击「临时载入附加组件…」
+3. 选择解压目录里的 `manifest.json`（或仓库根目录的 `manifest.json`）
+4. 打开 B 站视频页，点一下页面，右下角出现面板
+5. 重启 Firefox 后需要重新载入一次
+
+**正式安装（需要签名）**
+
+- 到 [addons.mozilla.org 开发者中心](https://addons.mozilla.org/developer/) 上传 `bilibili-volume-balancer-firefox.zip`，签名通过后安装官方分发的版本；或
+- 使用 Firefox Developer Edition / Nightly，把 `about:config` 里的 `xpinstall.signatures.required` 设为 `false`，再把未签名 XPI 放进 profile 的 `extensions/` 目录。正式版 Firefox 不支持这个开关。
 
 安装后如果面板没有出现，刷新一次视频页。
 
@@ -123,7 +149,10 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
    增益用 `setTargetAtTime` 以约 `220 ms` 的时间常数过渡，避免"突然变响/变轻"的抽吸感；小于 `1 dB` 的变化不处理，避免来回抖。
 
 5. **按视频 / UP 主记忆**
-   测量结果写入 `chrome.storage.local`，键是 `v:BV号` 和 `u:UP主mid`。下次打开同一视频或同一 UP 主的视频，先套用历史值，再继续测量修正。
+   测量结果写入扩展存储（Chromium 用 `chrome.storage.local`，Firefox 用 `browser.storage.local`，同一个 `storage` 权限），键是 `v:BV号` 和 `u:UP主mid`。下次打开同一视频或同一 UP 主的视频，先套用历史值，再继续测量修正。
+
+6. **跨浏览器加载 Worklet**
+   扩展资源先直接交给 `audioWorklet.addModule()`；如果浏览器的 worklet 取源策略更严（Firefox 对 `moz-extension://` 和 blob 的 principal 更严格），会改用扩展权限 `fetch` 源码、再转成 Blob URL 加载。两条路都失败才退到兼容测量。
 
 ---
 
@@ -139,7 +168,8 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
 
 - **只支持 B 站网页版**：`/video/`、`/list/`、`/medialist/play/`。B 站 App、手机浏览器、电视端不覆盖。
 - **番剧 / DRM 内容未纳入**：受 DRM 保护的媒体可能无法被 Web Audio 接管，强行接入可能静音，所以默认不匹配 `/bangumi/play/`。
-- **需要一次点击**：Chrome / Edge 的自动播放策略会让新建的 `AudioContext` 处于 suspended，必须在页面上点一下才能启动。
+- **需要一次点击**：Chrome / Edge / Firefox 的自动播放策略都会让新建的 `AudioContext` 处于 suspended，必须在页面上点一下才能启动。
+- **Firefox 正式版要求签名**：Firefox 只永久安装已签名的扩展。临时加载（`about:debugging`）每次重启都要重来；想长期使用需要去 addons.mozilla.org 签名，或用 Developer Edition / Nightly 关闭签名校验后侧载。
 - **开头几秒仍可能有差异**：这是"先测量、后校正"的代价；有缓存时会好很多。
 - **不能修复削波和失真**：如果 UP 主导出时已经削波，整体增益救不回来。
 - **可能与 B 站自带的音量均衡叠加**：如果 B 站客户端/网页以后提供类似功能，建议只开一个。
@@ -153,42 +183,59 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
 
 ```
 bilibili-volume-balancer/
-├── manifest.json              # MV3 清单
+├── manifest.json              # MV3 清单（三种浏览器共用）
 ├── src/
 │   ├── content.js             # 播放器接管、增益控制、面板、缓存
 │   └── loudness-worklet.js    # EBU R128 响度测量（音频线程）
 ├── test/
 │   ├── loudness.test.mjs      # 算法单元测试
 │   └── e2e/
-│       ├── harness.html       # 浏览器端到端测试页
+│       ├── harness.html       # Chromium 测试页（页面内注入 content.js）
+│       ├── firefox-harness.html # Firefox 测试页（由真实扩展注入）
 │       ├── level-test.webm    # 前 10 秒安静、后 20 秒大声的测试视频
-│       └── run.mjs            # 启动 Edge/Chrome 并读取实际增益
+│       ├── run.mjs            # 启动 Edge/Chrome 并读取实际增益
+│       └── run-firefox.mjs    # 用 web-ext 在真实 Firefox 里临时加载扩展
 ├── icons/
 ├── tools/
-│   └── make_icons.py          # 生成图标（可选）
+│   ├── make_icons.py          # 生成图标（可选）
+│   ├── pack.mjs               # 打 Chrome / Firefox 发布包
+│   └── lib/                   # 打包用的 zip 写入器与清单处理
 └── docs/
     ├── design.md              # 设计与取舍说明
     ├── panel.png              # 实际运行截图
-    └── publishing.md          # 发布到 GitHub 的步骤
+    └── publishing.md          # 发布到 GitHub / AMO 的步骤
 ```
 
-发布到 GitHub 的详细步骤见 [docs/publishing.md](docs/publishing.md)。
+发布步骤见 [docs/publishing.md](docs/publishing.md)，版本变更见 [CHANGELOG.md](CHANGELOG.md)。
 
-跑算法测试（不需要安装依赖）：
+跑算法测试（只依赖 Node 22+，不需要安装依赖）：
 
 ```bash
 node --test --experimental-test-isolation=none test/loudness.test.mjs
 ```
 
-跑真实浏览器端到端测试（需要本机有 Edge 或 Chrome）：
+打发布包（`dist/` 已被 gitignore）：
 
 ```bash
-node test/e2e/run.mjs
+node tools/pack.mjs
+# dist/chrome/bilibili-volume-balancer-chrome.zip
+# dist/firefox/bilibili-volume-balancer-firefox.zip
 ```
 
-它会启动本地 HTTP 服务和无头浏览器，加载测试页，确认扩展真的接管了 `<video>`、收到响度测量，并在安静段提升 `+15 dB`、在大声段衰减到约 `-4.1 dB`。
+跑真实浏览器端到端测试：
 
-> DSH 的 `workspace-write` 沙箱会拦截 Chromium 的 mojo 进程通信；在这个环境里跑 E2E 需要 `danger-full-access`。普通本机终端直接运行即可。
+```bash
+# Chromium：需要本机有 Edge 或 Chrome
+node test/e2e/run.mjs
+
+# Firefox：需要本机有 Firefox，并且先 npm install（会装 web-ext）
+npm install
+node test/e2e/run-firefox.mjs
+```
+
+Chromium 测试会在页面里直接注入 `content.js`，验证音频图与增益；Firefox 测试走的是真实链路：用 `web-ext` 在 Firefox 里临时安装扩展（不需要签名），页面把面板读数回传给本地服务器，再断言增益方向。两个测试都会确认安静段提升 `+15 dB`、大声段衰减到约 `-4 dB`。
+
+> DSH 的 `workspace-write` 沙箱会拦截 Chromium 的 mojo 进程通信，也会让 Firefox 的无头进程拿不到 GPU 子进程；在这个环境里跑 E2E 需要 `danger-full-access`。普通本机终端直接运行即可。
 
 测试覆盖：
 
@@ -199,9 +246,10 @@ node test/e2e/run.mjs
 - 相对门限忽略远低于主内容的安静段落
 - 全静音不产生有效 integrated loudness
 - `reset` 后历史清空
-- 真实浏览器中：44.1 kHz 采样率、AudioWorklet 加载、视频接管、增益方向、B 站音量 50% 时增益不变
+- Chromium 中：44.1 kHz 采样率、AudioWorklet 加载、视频接管、增益方向、B 站音量 50% 时增益不变
+- Firefox 中：清单与内容脚本注入、`browser.storage.local` 缓存、`moz-extension://` 资源加载、AudioWorklet 测量、增益方向
 
-当前结果：算法测试 7/7 通过；端到端测试通过（安静段 `+15.0 dB`，大声段 `-4.1 dB`，50% 音量下仍为 `-4.1 dB`）。
+当前结果：算法测试 7/7 通过；Chromium 端到端通过（安静段 `+15.0 dB`，大声段 `-4.1 dB`，50% 音量下仍为 `-4.1 dB`）；Firefox 160 端到端通过（扩展临时加载成功，安静段 `+15.0 dB`，大声段 `-4.0 dB`，参考 `-11.8 LUFS`，未退到兼容模式）。
 
 另外已在真实 B 站页面（Edge 157，`BV1GJ411x7h7`）验证：面板正常出现，测得参考 `-13.3 LUFS`，施加 `-2.4 dB`，控制台无报错。线上播放器 DOM 会随 B 站改版变化，如果面板一直显示"等待视频播放"，请附上播放器截图反馈。
 
@@ -209,8 +257,8 @@ node test/e2e/run.mjs
 
 ## 后续可以做什么
 
+- **上架扩展商店**：AMO（Firefox）需要签名，Chrome Web Store / Edge Add-ons 各提交一次；签名后 Firefox 用户不用再临时加载。
 - **系统级版本**：用 WASAPI loopback + 虚拟声卡，覆盖 B 站 App、浏览器、本地播放器。代价是要装驱动，延迟和 A/V 同步更麻烦。
 - **Android**：Android 10+ 的 `AudioPlaybackCapture` 可以捕获部分 App 音频，但 B 站是否允许捕获、以及系统权限限制都需要实测。
-- **Firefox**：核心 Web Audio 代码可复用，主要是扩展清单和 `AudioWorklet` 资源加载方式不同。
 - **更细的按 UP 主学习**：把"这位 UP 主通常比目标低 4 dB"作为先验，减少首次测量时间。
 - **可选的真峰值限幅**：当前用 `DynamicsCompressor` 近似，后续可以换成带 look-ahead 的 AudioWorklet 限幅器。
