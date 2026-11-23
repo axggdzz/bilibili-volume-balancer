@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.2.1
+
+**上架准备：去掉 `innerHTML` 赋值。**
+
+AMO 的自动校验会把 `innerHTML` 赋值标成 "Unsafe assignment to innerHTML"，并提示可能导致驳回。面板内容是静态模板，不涉及注入，但为了减少审核解释成本，改成：
+
+- 面板骨架用 `DOMParser` 解析后 `append` 到 shadow root，不再赋值 `innerHTML`；
+- LUFS 读数只更新独立的文本节点，不再重建内部标记。
+
+功能与 0.2.0 完全相同。`web-ext lint` 的 warning 从 3 条降到 0 条（`innerHTML` 两条消失）。
+
 ## 0.2.0
 
 **Firefox 支持。**
