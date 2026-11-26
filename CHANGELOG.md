@@ -11,6 +11,8 @@ AMO 的自动校验会把 `innerHTML` 赋值标成 "Unsafe assignment to innerHT
 
 功能与 0.2.0 完全相同。`web-ext lint` 的 warning 从 3 条降到 0 条（`innerHTML` 两条消失）。
 
+已上架 addons.mozilla.org：<https://addons.mozilla.org/firefox/addon/b站音量均衡器/>（版本 0.2.1 通过自动审核）。
+
 ## 0.2.0
 
 **Firefox 支持。**

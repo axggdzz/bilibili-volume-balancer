@@ -2,7 +2,7 @@
 
 一个 Chrome / Edge / Firefox 扩展：自动测量 B 站网页视频的响度，把「这个 UP 主声音特别小、那个 UP 主声音特别大」拉回到同一水平。
 
-[GitHub 仓库](https://github.com/axggdzz/bilibili-volume-balancer) · [下载最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest)
+[GitHub 仓库](https://github.com/axggdzz/bilibili-volume-balancer) · [Firefox 版（addons.mozilla.org）](https://addons.mozilla.org/firefox/addon/b%E7%AB%99%E9%9F%B3%E9%87%8F%E5%9D%87%E8%A1%A1%E5%99%A8/) · [下载最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest)
 
 它不是简单地把音量调大，而是按 **EBU R128 / ITU-R BS.1770** 测量视频的整体响度（LUFS），再施加一个整体增益，并用限幅器保护峰值。这样不会把视频本身的动态范围压扁。
 
@@ -16,48 +16,27 @@
 
 ## 安装
 
-不需要编译，也不依赖任何 npm 包。从 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 下载对应浏览器的包并解压：
-
-| 浏览器 | 下载文件 |
-|---|---|
-| Chrome / Edge | `bilibili-volume-balancer-chrome.zip` |
-| Firefox | `bilibili-volume-balancer-firefox.zip` |
-
-两个包的内容只有 `manifest.json` 里的 `browser_specific_settings` 不同：Chrome 包去掉了它（避免 Chrome 报未知键警告），Firefox 包保留 gecko id 与数据收集声明。
-
-也可以直接加载仓库根目录：根目录的 `manifest.json` 同时兼容三种浏览器，Chrome / Edge 会忽略 `browser_specific_settings`，只是扩展页会多一条「Unrecognized manifest key」提示，不影响功能。
-
-### Chrome
-
-1. 打开 `chrome://extensions/`
-2. 打开右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」
-4. 选择解压后的目录（或仓库根目录）
-5. 打开任意 B 站视频页，例如 `https://www.bilibili.com/video/BV...`
-6. **在页面上点一下**（浏览器的自动播放策略要求一次用户手势），右下角会出现控制面板
-
-### Edge
-
-步骤相同，地址换成 `edge://extensions/`，同样开启「开发人员模式」→「加载解压缩的扩展」。
-
 ### Firefox
 
-Firefox 正式版只安装**已签名**的扩展，所以分两种情况：
+已上架 [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/b%E7%AB%99%E9%9F%B3%E9%87%8F%E5%9D%87%E8%A1%A1%E5%99%A8/)，打开页面点「添加到 Firefox」即可，之后新版本自动更新。
 
-**临时加载（自用、开发调试，最省事）**
+离线或内网环境：下载 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 里的 `bilibili-volume-balancer-0.2.1-signed.xpi`，用 Firefox 打开安装（已由 Mozilla 签名）。
 
-1. 地址栏打开 `about:debugging#/runtime/this-firefox`
-2. 点击「临时载入附加组件…」
-3. 选择解压目录里的 `manifest.json`（或仓库根目录的 `manifest.json`）
-4. 打开 B 站视频页，点一下页面，右下角出现面板
-5. 重启 Firefox 后需要重新载入一次
+### Chrome / Edge
 
-**正式安装（需要签名）**
+从 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 下载 `bilibili-volume-balancer-chrome.zip` 并解压：
 
-- 到 [addons.mozilla.org 开发者中心](https://addons.mozilla.org/developer/) 上传 `bilibili-volume-balancer-firefox.zip`，签名通过后安装官方分发的版本；或
-- 使用 Firefox Developer Edition / Nightly，把 `about:config` 里的 `xpinstall.signatures.required` 设为 `false`，再把未签名 XPI 放进 profile 的 `extensions/` 目录。正式版 Firefox 不支持这个开关。
+1. 打开 `chrome://extensions/`（Edge 用 `edge://extensions/`）
+2. 打开「开发者模式」（Edge 叫「开发人员模式」）
+3. 点「加载已解压的扩展程序」，选择解压后的目录
+4. 打开任意 B 站视频页，例如 `https://www.bilibili.com/video/BV...`
+5. **在页面上点一下**（浏览器的自动播放策略要求一次用户手势），右下角会出现控制面板
 
 安装后如果面板没有出现，刷新一次视频页。
+
+> 两个 zip 的内容只有 `manifest.json` 里的 `browser_specific_settings` 不同：Chrome 包去掉了它（避免 Chrome 报未知键警告），Firefox 包保留 gecko id 与数据收集声明。直接加载仓库根目录也可以，Chrome / Edge 会忽略那个键，只在扩展页多一条提示。
+>
+> 开发调试时想免签名加载改动：`about:debugging#/runtime/this-firefox` →「临时载入附加组件」→ 选 `manifest.json`，重启后失效。
 
 ---
 
@@ -169,7 +148,7 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
 - **只支持 B 站网页版**：`/video/`、`/list/`、`/medialist/play/`。B 站 App、手机浏览器、电视端不覆盖。
 - **番剧 / DRM 内容未纳入**：受 DRM 保护的媒体可能无法被 Web Audio 接管，强行接入可能静音，所以默认不匹配 `/bangumi/play/`。
 - **需要一次点击**：Chrome / Edge / Firefox 的自动播放策略都会让新建的 `AudioContext` 处于 suspended，必须在页面上点一下才能启动。
-- **Firefox 正式版要求签名**：Firefox 只永久安装已签名的扩展。临时加载（`about:debugging`）每次重启都要重来；想长期使用需要去 addons.mozilla.org 签名，或用 Developer Edition / Nightly 关闭签名校验后侧载。
+- **Firefox 需要签名**：正式版只安装已签名的扩展。已经上架 AMO，正常安装不受影响；自己改代码测试时用 `about:debugging` 临时载入，或用 Developer Edition 关闭 `xpinstall.signatures.required` 后侧载。
 - **开头几秒仍可能有差异**：这是"先测量、后校正"的代价；有缓存时会好很多。
 - **不能修复削波和失真**：如果 UP 主导出时已经削波，整体增益救不回来。
 - **可能与 B 站自带的音量均衡叠加**：如果 B 站客户端/网页以后提供类似功能，建议只开一个。
