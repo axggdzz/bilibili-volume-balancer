@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "B站音量均衡器",
   "short_name": "B站音量均衡",
-  "version": "0.2.1",
-  "description": "自动测量 B 站视频响度，把忽大忽小的视频音量拉齐；只在本机处理，不上传数据。",
+  "version": "0.3.0",
+  "description": "自动测量 B 站视频/直播响度，把忽大忽小的声音拉齐；只在本机处理，不上传数据。",
   "browser_specific_settings": {
     "gecko": {
       "id": "bilibili-volume-balancer@axggdzz.github.io",
@@ -26,7 +26,10 @@
       "matches": [
         "https://www.bilibili.com/video/*",
         "https://www.bilibili.com/list/*",
-        "https://www.bilibili.com/medialist/play/*"
+        "https://www.bilibili.com/medialist/play/*",
+        "https://www.bilibili.com/blackboard/live/*",
+        "https://www.bilibili.com/live/*",
+        "https://live.bilibili.com/*"
       ],
       "js": [
         "src/content.js"

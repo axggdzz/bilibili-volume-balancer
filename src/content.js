@@ -46,6 +46,11 @@
   const extApi = detectExtApi();
   const DEFAULT_TARGET_LUFS = -16;
   const TARGET_PRESETS = [-20, -18, -16, -14];
+  const MIN_TARGET_LUFS = -40;
+  const MAX_TARGET_LUFS = 0;
+  const MIN_PANEL_OPACITY = 0.3;
+  const DOCK_PEEK = 16;
+  const DOCK_GAP = 8;
   const MAX_GAIN_DB = 15;
   const MIN_GAIN_DB = -24;
   const CACHE_MAX_ENTRIES = 800;
@@ -68,6 +73,8 @@
     meterData: null,
     appliedDb: 0,
     targetLufs: DEFAULT_TARGET_LUFS,
+    targetMode: 'preset',
+    customTargetLufs: DEFAULT_TARGET_LUFS,
     enabled: true,
     key: null,
     contextInfo: null,
@@ -93,6 +100,20 @@
     attaching: false,
     gestureBusy: false,
     lastUI: {},
+    panelOpacity: 1,
+    panelCollapsed: false,
+    fullscreenExpanded: false,
+    isFullscreen: false,
+    preFullscreen: null,
+    dockSide: null,
+    dockHidden: false,
+    dockTimer: null,
+    panelPos: { x: null, y: null },
+    drag: null,
+    suppressMiniClick: false,
+    suppressMiniTimer: null,
+    saveTimer: null,
+    resizeTimer: null,
   };
 
   // ---------------------------------------------------------------------------
@@ -353,6 +374,161 @@
     @media (prefers-reduced-motion: reduce) {
       .panel, .switch, .switch::after, .fill, .target { transition: none; }
     }
+
+    /* ---- 可拖动 / 可收起 / 全屏贴边 ---- */
+    :host {
+      display: block;
+      left: 0;
+      top: 0;
+      right: auto;
+      bottom: auto;
+      transition: left 180ms ease, top 180ms ease, opacity 160ms ease;
+      will-change: left, top, opacity;
+    }
+    :host(.dragging) { transition: none; }
+    :host([data-collapsed="true"]) .panel { display: none; }
+    :host([data-collapsed="true"]) .mini { display: grid; }
+    .panel { width: 312px; }
+    .head {
+      cursor: grab;
+      touch-action: none;
+    }
+    .head:active { cursor: grabbing; }
+    .status { max-width: 168px; }
+    .icon-btn {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #9ba1af;
+      cursor: pointer;
+      outline: none;
+    }
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+    .icon-btn:focus-visible { box-shadow: 0 0 0 2px rgba(251, 114, 153, 0.5); }
+    .icon-btn svg { width: 15px; height: 15px; display: block; }
+    [hidden] { display: none !important; }
+
+    .controls { flex-wrap: wrap; }
+    .target-custom {
+      width: 52px;
+      padding: 4px 5px;
+      border: 1px solid rgba(251, 114, 153, 0.4);
+      border-radius: 7px;
+      outline: none;
+      background: #242833;
+      color: #e9ebef;
+      font: inherit;
+      font-size: 10.5px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+    .target-custom:focus { border-color: rgba(251, 114, 153, 0.85); }
+    .target-unit { color: #8d93a1; font-size: 9px; margin-left: -2px; }
+
+    .opacity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px 9px;
+      color: #8d93a1;
+      font-size: 9.8px;
+    }
+    .opacity-row label { white-space: nowrap; }
+    .opacity-row input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      height: 4px;
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      border-radius: 999px;
+      outline: none;
+      background: rgba(255, 255, 255, 0.14);
+      cursor: pointer;
+    }
+    .opacity-row input[type="range"]::-webkit-slider-thumb {
+      width: 12px;
+      height: 12px;
+      appearance: none;
+      -webkit-appearance: none;
+      border: 0;
+      border-radius: 50%;
+      background: #fb7299;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    }
+    .opacity-row input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border: 0;
+      border-radius: 50%;
+      background: #fb7299;
+    }
+    .opacity-value {
+      width: 30px;
+      text-align: right;
+      color: #9ba1af;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mini {
+      display: none;
+      position: relative;
+      width: 46px;
+      height: 46px;
+      place-items: center;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 15px;
+      background:
+        radial-gradient(120% 120% at 100% 0%, rgba(251, 114, 153, 0.28), transparent 58%),
+        linear-gradient(145deg, #2b2d37, #14151b);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      cursor: grab;
+      touch-action: none;
+      outline: none;
+    }
+    .mini:active { cursor: grabbing; }
+    .mini:focus-visible { box-shadow: 0 0 0 2px rgba(251, 114, 153, 0.55); }
+    .mini-logo {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #fb7299, #ff9fb7);
+      box-shadow: 0 4px 12px rgba(251, 114, 153, 0.28);
+    }
+    .mini-logo svg { width: 17px; height: 17px; display: block; }
+    .mini-dot {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid #16171d;
+      border-radius: 50%;
+      background: #8fe0b7;
+    }
+    .mini[data-tone="warn"] .mini-dot { background: #f4c56a; }
+    .mini[data-tone="error"] .mini-dot { background: #ff9d9d; }
+    .mini[data-tone="muted"] .mini-dot { background: #737987; }
+    :host([data-docked="true"]) .mini {
+      border-color: rgba(251, 114, 153, 0.45);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(251, 114, 153, 0.12);
+    }
+    @media (max-width: 560px) {
+      .panel { width: 286px; }
+      .status { max-width: 140px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :host { transition: none; }
+    }
   `;
 
   const PANEL_HTML = `
@@ -371,6 +547,11 @@
           <div class="title">B站音量均衡</div>
           <div class="status" id="bvb-status" data-tone="muted">正在寻找播放器</div>
         </div>
+        <button class="icon-btn" id="bvb-collapse" type="button" title="收起面板" aria-label="收起面板">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 14.5 12 8.5l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button class="switch" id="bvb-toggle" type="button" role="switch" aria-checked="true" aria-label="启用音量均衡"></button>
       </div>
       <div class="meter">
@@ -390,11 +571,31 @@
           <option value="-18">偏轻 -18</option>
           <option value="-16">标准 -16</option>
           <option value="-14">偏响 -14</option>
+          <option value="custom">手动</option>
         </select>
+        <input class="target-custom" id="bvb-target-custom" type="number" min="-40" max="0" step="0.5" inputmode="decimal" aria-label="手动目标响度 LUFS" hidden>
+        <span class="target-unit" id="bvb-target-unit" hidden>LUFS</span>
         <button class="reset" id="bvb-reset" type="button">重新测量</button>
+      </div>
+      <div class="opacity-row">
+        <label for="bvb-opacity">透明度</label>
+        <input id="bvb-opacity" type="range" min="30" max="100" step="5" value="100" aria-label="面板透明度">
+        <span class="opacity-value" id="bvb-opacity-value">100%</span>
       </div>
       <div class="foot" id="bvb-foot">自动把不同视频拉齐到同一响度，不改动 B 站原音量。</div>
     </div>
+    <button class="mini" id="bvb-mini" type="button" data-tone="muted" title="展开音量均衡面板" aria-label="展开音量均衡面板">
+      <span class="mini-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M4 14V10" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M8.5 17V7" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M13 15.5V8.5" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M17.5 19V5" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M22 13V11" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="mini-dot" aria-hidden="true"></span>
+    </button>
   `;
 
   function ensurePanel() {
@@ -404,10 +605,11 @@
     const shadow = host.attachShadow({ mode: 'open' });
     // 用 DOMParser 而不是 shadow.innerHTML：AMO 的自动校验会把 innerHTML 赋值
     // 标成 "Unsafe assignment to innerHTML"，触发人工审核时的额外解释成本。
-    const parsed = new DOMParser().parseFromString(
-      `<style>${PANEL_CSS}</style>${PANEL_HTML}`,
-      'text/html'
-    );
+    // style 单独创建：DOMParser 可能把 <style> 放进 head，导致 shadow 根里没有样式。
+    const style = document.createElement('style');
+    style.textContent = PANEL_CSS;
+    shadow.appendChild(style);
+    const parsed = new DOMParser().parseFromString(PANEL_HTML, 'text/html');
     shadow.append(...Array.from(parsed.body.childNodes));
     (document.body || document.documentElement).appendChild(host);
 
@@ -416,17 +618,28 @@
     state.els = {
       shadow,
       panel: shadow.querySelector('.panel'),
+      head: shadow.querySelector('.head'),
+      mini: $('bvb-mini'),
       status: $('bvb-status'),
       toggle: $('bvb-toggle'),
+      collapse: $('bvb-collapse'),
       fill: $('bvb-fill'),
       targetMark: $('bvb-target-mark'),
       lufs: $('bvb-lufs'),
       lufsValue: $('bvb-lufs-value'),
       gain: $('bvb-gain'),
       target: $('bvb-target'),
+      targetCustom: $('bvb-target-custom'),
+      targetUnit: $('bvb-target-unit'),
       reset: $('bvb-reset'),
+      opacity: $('bvb-opacity'),
+      opacityValue: $('bvb-opacity-value'),
       foot: $('bvb-foot'),
     };
+
+    state.panelPos = defaultPosition();
+    setPosition(state.panelPos.x, state.panelPos.y);
+    host.style.opacity = '0';
 
     state.els.toggle.addEventListener('click', async () => {
       state.enabled = !state.enabled;
@@ -441,14 +654,73 @@
       await saveSettings();
     });
 
-    state.els.target.addEventListener('change', async () => {
-      const value = Number(state.els.target.value);
-      if (TARGET_PRESETS.includes(value)) {
-        state.targetLufs = value;
+    state.els.collapse.addEventListener('click', () => {
+      setCollapsed(true);
+    });
+
+    state.els.mini.addEventListener('click', () => {
+      if (state.suppressMiniClick) {
+        state.suppressMiniClick = false;
+        if (state.suppressMiniTimer) {
+          clearTimeout(state.suppressMiniTimer);
+          state.suppressMiniTimer = null;
+        }
+        return;
+      }
+      setCollapsed(false);
+    });
+
+    state.els.target.addEventListener('change', () => {
+      if (state.els.target.value === 'custom') {
+        state.targetMode = 'custom';
+        state.targetLufs = clampTarget(state.customTargetLufs);
+        refreshTargetUI();
         reapplyBestGain();
         updateUI(true);
-        await saveSettings();
+        saveSettingsSoon();
+        requestAnimationFrame(() => {
+          state.els.targetCustom.focus();
+          state.els.targetCustom.select();
+        });
+        return;
       }
+
+      const value = Number(state.els.target.value);
+      if (TARGET_PRESETS.includes(value)) {
+        state.targetMode = 'preset';
+        state.targetLufs = value;
+        refreshTargetUI();
+        reapplyBestGain();
+        updateUI(true);
+        saveSettingsSoon();
+      }
+    });
+
+    const onCustomTarget = () => {
+      const raw = state.els.targetCustom.value.trim();
+      if (!raw) return;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) return;
+      state.targetMode = 'custom';
+      state.customTargetLufs = clampTarget(value);
+      state.targetLufs = state.customTargetLufs;
+      reapplyBestGain();
+      updateUI(true);
+      saveSettingsSoon();
+    };
+    state.els.targetCustom.addEventListener('input', onCustomTarget);
+    state.els.targetCustom.addEventListener('change', () => {
+      onCustomTarget();
+      state.els.targetCustom.value = state.targetLufs.toFixed(1);
+    });
+
+    state.els.opacity.addEventListener('input', () => {
+      const value = Number(state.els.opacity.value);
+      if (!Number.isFinite(value)) return;
+      state.panelOpacity = Math.max(MIN_PANEL_OPACITY, Math.min(1, value / 100));
+      state.els.opacityValue.textContent = `${Math.round(state.panelOpacity * 100)}%`;
+      applyHostOpacity();
+      saveSettingsSoon();
     });
 
     state.els.reset.addEventListener('click', () => {
@@ -465,6 +737,22 @@
       state.lastCacheBlocks = 0;
       updateUI(true);
     });
+
+    setupDrag(state.els.head, false);
+    setupDrag(state.els.mini, true);
+
+    state.els.mini.dataset.tone = 'muted';
+    host.addEventListener('pointerenter', () => {
+      clearDockTimer();
+      if (state.isFullscreen && effectiveCollapsed() && state.dockHidden) {
+        setDockHidden(false);
+      }
+    });
+    host.addEventListener('pointerleave', () => {
+      if (state.isFullscreen && effectiveCollapsed() && state.dockSide) {
+        scheduleDockHide(900);
+      }
+    });
   }
 
   function setText(el, text) {
@@ -479,6 +767,28 @@
 
   function gainFor(lufs) {
     return Math.max(MIN_GAIN_DB, Math.min(MAX_GAIN_DB, state.targetLufs - lufs));
+  }
+
+  function clampTarget(value) {
+    const clamped = Math.max(MIN_TARGET_LUFS, Math.min(MAX_TARGET_LUFS, value));
+    return Math.round(clamped * 10) / 10;
+  }
+
+  function refreshTargetUI() {
+    if (!state.els) return;
+    const custom = state.targetMode === 'custom';
+    const selectValue = custom ? 'custom' : String(state.targetLufs);
+    if (state.els.target.value !== selectValue) state.els.target.value = selectValue;
+    state.els.targetCustom.hidden = !custom;
+    state.els.targetUnit.hidden = !custom;
+    if (custom && document.activeElement !== state.els.targetCustom) {
+      state.els.targetCustom.value = state.targetLufs.toFixed(1);
+    }
+    if (state.els.opacity.value !== String(Math.round(state.panelOpacity * 100))) {
+      state.els.opacity.value = String(Math.round(state.panelOpacity * 100));
+    }
+    state.els.opacityValue.textContent = `${Math.round(state.panelOpacity * 100)}%`;
+    state.els.targetMark.style.left = `${lufsToPercent(state.targetLufs)}%`;
   }
 
   /**
@@ -553,15 +863,14 @@
       status = '准备测量…';
     }
     setStatus(status, tone);
-
-    if (state.els.target.value !== String(state.targetLufs)) {
-      state.els.target.value = String(state.targetLufs);
-    }
-    state.els.targetMark.style.left = `${lufsToPercent(state.targetLufs)}%`;
+    state.els.mini.dataset.tone = tone;
+    refreshTargetUI();
 
     let foot = '自动把不同视频拉齐到同一响度，不改动 B 站原音量。';
     if (!state.enabled) {
       foot = '开关关闭时不会改动声音；测量结果仍会保留。';
+    } else if (state.contextInfo && state.contextInfo.live) {
+      foot = '直播流会持续校准，不缓存房间响度。';
     } else if (state.usingCache === 'up') {
       foot = '已按这位 UP 主的历史响度校准，播放几秒后会再精调。';
     } else if (state.usingCache === 'video') {
@@ -575,6 +884,326 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 面板位置 / 收起 / 全屏贴边
+  // ---------------------------------------------------------------------------
+
+  function effectiveCollapsed() {
+    return state.isFullscreen ? !state.fullscreenExpanded : state.panelCollapsed;
+  }
+
+  function hostSize() {
+    if (!state.panel) return { width: 312, height: 190 };
+    const rect = state.panel.getBoundingClientRect();
+    return {
+      width: rect.width || 312,
+      height: rect.height || 190,
+    };
+  }
+
+  function clampPosition(x, y) {
+    const { width, height } = hostSize();
+    const maxX = Math.max(4, window.innerWidth - width - 4);
+    const maxY = Math.max(4, window.innerHeight - height - 4);
+    return {
+      x: Math.min(Math.max(4, Number.isFinite(x) ? x : maxX), maxX),
+      y: Math.min(Math.max(4, Number.isFinite(y) ? y : maxY), maxY),
+    };
+  }
+
+  function defaultPosition() {
+    const { width, height } = hostSize();
+    return {
+      x: Math.max(4, window.innerWidth - width - 18),
+      y: Math.max(4, window.innerHeight - height - 78),
+    };
+  }
+
+  function setPosition(x, y) {
+    if (!state.panel) return;
+    const pos = clampPosition(x, y);
+    state.panelPos = pos;
+    state.panel.style.left = `${Math.round(pos.x)}px`;
+    state.panel.style.top = `${Math.round(pos.y)}px`;
+  }
+
+  function dockX(side, hidden) {
+    const { width } = hostSize();
+    if (side === 'left') {
+      return hidden ? -(width - DOCK_PEEK) : DOCK_GAP;
+    }
+    return hidden ? window.innerWidth - DOCK_PEEK : window.innerWidth - width - DOCK_GAP;
+  }
+
+  function applyHostOpacity() {
+    if (!state.panel) return;
+    const factor = state.dockHidden && state.isFullscreen && effectiveCollapsed() ? 0.55 : 1;
+    state.panel.style.opacity = String(Math.max(0.08, state.panelOpacity * factor));
+  }
+
+  function clearDockTimer() {
+    if (state.dockTimer) {
+      clearTimeout(state.dockTimer);
+      state.dockTimer = null;
+    }
+  }
+
+  function scheduleDockHide(delay = 1600) {
+    clearDockTimer();
+    if (!state.isFullscreen || !effectiveCollapsed() || !state.dockSide) return;
+    state.dockTimer = setTimeout(() => {
+      state.dockTimer = null;
+      if (state.isFullscreen && effectiveCollapsed() && state.dockSide) setDockHidden(true);
+    }, delay);
+  }
+
+  function setDockHidden(hidden) {
+    if (!state.panel) return;
+    if (!state.dockSide || !state.isFullscreen || !effectiveCollapsed()) {
+      state.dockHidden = false;
+      applyHostOpacity();
+      return;
+    }
+    state.dockHidden = Boolean(hidden);
+    state.panel.dataset.docked = 'true';
+    state.panel.dataset.dockHidden = String(state.dockHidden);
+    const { height } = hostSize();
+    const y = Math.max(4, Math.min(state.panelPos.y, window.innerHeight - height - 4));
+    state.panelPos.y = y;
+    state.panel.style.left = `${Math.round(dockX(state.dockSide, state.dockHidden))}px`;
+    state.panel.style.top = `${Math.round(y)}px`;
+    applyHostOpacity();
+  }
+
+  function applyPanelState() {
+    if (!state.panel) return;
+    state.panel.dataset.collapsed = String(effectiveCollapsed());
+    state.panel.dataset.fullscreen = String(state.isFullscreen);
+
+    if (state.isFullscreen && state.dockSide && effectiveCollapsed()) {
+      state.panel.dataset.docked = 'true';
+      setDockHidden(state.dockHidden);
+      return;
+    }
+
+    delete state.panel.dataset.docked;
+    delete state.panel.dataset.dockHidden;
+    state.dockHidden = false;
+    if (!Number.isFinite(state.panelPos.x) || !Number.isFinite(state.panelPos.y)) {
+      state.panelPos = defaultPosition();
+    }
+    setPosition(state.panelPos.x, state.panelPos.y);
+    applyHostOpacity();
+  }
+
+  function clampPanelPosition() {
+    if (!state.panel || (state.isFullscreen && state.dockSide)) return;
+    setPosition(state.panelPos.x, state.panelPos.y);
+  }
+
+  function dockToNearestSide() {
+    if (!state.isFullscreen || !effectiveCollapsed()) return;
+    const { width } = hostSize();
+    state.dockSide = state.panelPos.x + width / 2 < window.innerWidth / 2 ? 'left' : 'right';
+    state.dockHidden = false;
+    applyPanelState();
+    scheduleDockHide(1600);
+  }
+
+  function setCollapsed(collapsed) {
+    if (state.isFullscreen) {
+      state.fullscreenExpanded = !collapsed;
+    } else {
+      state.panelCollapsed = collapsed;
+    }
+    state.dockHidden = false;
+    applyPanelState();
+    requestAnimationFrame(() => {
+      if (!state.isFullscreen) {
+        setPosition(state.panelPos.x, state.panelPos.y);
+      } else if (!effectiveCollapsed()) {
+        const { width } = hostSize();
+        const x = state.dockSide === 'left' ? DOCK_GAP : window.innerWidth - width - DOCK_GAP;
+        setPosition(x, state.panelPos.y);
+      } else if (!state.dockSide) {
+        dockToNearestSide();
+      } else {
+        scheduleDockHide(1500);
+      }
+      refreshTargetUI();
+    });
+    saveSettingsSoon();
+  }
+
+  function setupDrag(handle, allowButton) {
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      if (!allowButton && event.target.closest('button, select, input, label, a')) return;
+      beginDrag(event, handle);
+    });
+  }
+
+  function beginDrag(event, handle) {
+    if (!state.panel) return;
+    const rect = state.panel.getBoundingClientRect();
+    state.drag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      moved: false,
+    };
+    state.dockHidden = false;
+    applyHostOpacity();
+    try { handle.setPointerCapture(event.pointerId); } catch {}
+    state.panel.classList.add('dragging');
+    document.addEventListener('pointermove', onDragMove, true);
+    document.addEventListener('pointerup', endDrag, true);
+    document.addEventListener('pointercancel', endDrag, true);
+  }
+
+  function onDragMove(event) {
+    if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+    const dx = event.clientX - state.drag.startX;
+    const dy = event.clientY - state.drag.startY;
+    if (!state.drag.moved && Math.hypot(dx, dy) < 4) return;
+    state.drag.moved = true;
+    if (state.dockSide) {
+      state.dockSide = null;
+      delete state.panel.dataset.docked;
+      delete state.panel.dataset.dockHidden;
+      state.dockHidden = false;
+      applyHostOpacity();
+    }
+    setPosition(state.drag.left + dx, state.drag.top + dy);
+    event.preventDefault();
+  }
+
+  function endDrag(event) {
+    if (!state.drag || (event && event.pointerId !== state.drag.pointerId)) return;
+    const moved = state.drag.moved;
+    state.drag = null;
+    state.panel.classList.remove('dragging');
+    document.removeEventListener('pointermove', onDragMove, true);
+    document.removeEventListener('pointerup', endDrag, true);
+    document.removeEventListener('pointercancel', endDrag, true);
+    if (!moved) return;
+    state.suppressMiniClick = true;
+    if (state.suppressMiniTimer) clearTimeout(state.suppressMiniTimer);
+    state.suppressMiniTimer = setTimeout(() => {
+      state.suppressMiniClick = false;
+      state.suppressMiniTimer = null;
+    }, 400);
+    saveSettingsSoon();
+    if (state.isFullscreen && effectiveCollapsed()) {
+      dockToNearestSide();
+    } else {
+      setPosition(state.panelPos.x, state.panelPos.y);
+    }
+  }
+
+  function placePanel() {
+    if (!state.panel) return;
+    const fs = document.fullscreenElement;
+
+    // 直播播放器可能位于同源 iframe 内。iframe 全屏时，顶层文档的
+    // fullscreenElement 是 iframe 本身，把面板 append 到 iframe 元素上不会渲染；
+    // 同源时直接把面板 adopt 到 iframe 文档里，退出全屏后再移回顶层。
+    if (fs && fs.tagName === 'IFRAME') {
+      try {
+        const frameDocument = fs.contentDocument;
+        if (frameDocument && frameDocument.body) {
+          if (state.panel.ownerDocument !== frameDocument) {
+            frameDocument.body.appendChild(frameDocument.adoptNode(state.panel));
+          } else if (state.panel.parentElement !== frameDocument.body) {
+            frameDocument.body.appendChild(state.panel);
+          }
+          return;
+        }
+      } catch {
+        // 跨域 iframe 只能在顶层保留面板
+      }
+    }
+
+    const parent = fs && fs.tagName !== 'VIDEO' ? fs : (document.body || document.documentElement);
+    if (state.panel.ownerDocument !== document) {
+      try {
+        document.body.appendChild(document.adoptNode(state.panel));
+      } catch {
+        // iframe 文档已经销毁时保持现状，下一次 tick 会再尝试
+      }
+    } else if (state.panel.parentElement !== parent) {
+      parent.appendChild(state.panel);
+    }
+  }
+
+  function isWebFullscreen() {
+    const selector = '.bpx-player-container[data-screen="full"], .bpx-player-container[data-screen="web"], ' +
+      '.bilibili-player-video-wrap[data-screen="full"], .bilibili-player-video-wrap[data-screen="web"], ' +
+      '#bilibili-player[data-screen="full"]';
+    if (document.querySelector(selector)) return true;
+    for (const frame of Array.from(document.querySelectorAll('iframe'))) {
+      try {
+        const frameDocument = frame.contentDocument;
+        if (frameDocument && (frameDocument.fullscreenElement || frameDocument.querySelector(selector))) {
+          return true;
+        }
+      } catch {
+        // 跨域 iframe 跳过
+      }
+    }
+    return false;
+  }
+
+  function detectFullscreen() {
+    return Boolean(document.fullscreenElement) || isWebFullscreen();
+  }
+
+  function handleFullscreenChange(next = detectFullscreen()) {
+    if (next === state.isFullscreen) {
+      if (next) placePanel();
+      return;
+    }
+    if (next) {
+      state.preFullscreen = {
+        collapsed: state.panelCollapsed,
+        x: state.panelPos.x,
+        y: state.panelPos.y,
+      };
+      state.isFullscreen = true;
+      state.fullscreenExpanded = false;
+      state.dockHidden = false;
+      placePanel();
+      const { width } = hostSize();
+      state.dockSide = state.panelPos.x + width / 2 < window.innerWidth / 2 ? 'left' : 'right';
+      applyPanelState();
+      requestAnimationFrame(() => {
+        const { height } = hostSize();
+        state.panelPos.y = Math.min(Math.max(12, state.panelPos.y), Math.max(12, window.innerHeight - height - 12));
+        setDockHidden(false);
+        scheduleDockHide(1800);
+      });
+    } else {
+      clearDockTimer();
+      state.isFullscreen = false;
+      state.fullscreenExpanded = false;
+      state.dockSide = null;
+      state.dockHidden = false;
+      if (state.preFullscreen) {
+        state.panelCollapsed = state.preFullscreen.collapsed;
+        if (Number.isFinite(state.preFullscreen.x) && Number.isFinite(state.preFullscreen.y)) {
+          state.panelPos = { x: state.preFullscreen.x, y: state.preFullscreen.y };
+        }
+      }
+      state.preFullscreen = null;
+      placePanel();
+      applyPanelState();
+      requestAnimationFrame(clampPanelPosition);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // 设置与缓存
   // ---------------------------------------------------------------------------
 
@@ -582,8 +1211,33 @@
     const saved = await storage.get('settings', {});
     if (saved && typeof saved === 'object') {
       state.enabled = saved.enabled !== false;
-      const target = Number(saved.targetLufs);
-      if (TARGET_PRESETS.includes(target)) state.targetLufs = target;
+
+      const savedTarget = Number(saved.targetLufs);
+      if (Number.isFinite(savedTarget)) state.targetLufs = clampTarget(savedTarget);
+
+      const savedCustom = Number(saved.customTargetLufs);
+      if (Number.isFinite(savedCustom)) {
+        state.customTargetLufs = clampTarget(savedCustom);
+      } else {
+        state.customTargetLufs = state.targetLufs;
+      }
+
+      state.targetMode = saved.targetMode === 'custom' || !TARGET_PRESETS.includes(state.targetLufs)
+        ? 'custom'
+        : 'preset';
+      if (state.targetMode === 'custom') state.targetLufs = state.customTargetLufs;
+
+      const opacity = Number(saved.opacity);
+      if (Number.isFinite(opacity)) {
+        state.panelOpacity = Math.max(MIN_PANEL_OPACITY, Math.min(1, opacity));
+      }
+
+      state.panelCollapsed = saved.collapsed === true;
+
+      const pos = saved.panelPos;
+      if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+        state.panelPos = { x: pos.x, y: pos.y };
+      }
     }
 
     const cache = await storage.get('loudnessCache', {});
@@ -598,20 +1252,43 @@
     if (state.els) {
       state.els.toggle.setAttribute('aria-checked', String(state.enabled));
       state.els.panel.dataset.disabled = String(!state.enabled);
+      applyPanelState();
+      refreshTargetUI();
     }
   }
 
   async function saveSettings() {
+    if (state.saveTimer) {
+      clearTimeout(state.saveTimer);
+      state.saveTimer = null;
+    }
     await storage.set('settings', {
       enabled: state.enabled,
       targetLufs: state.targetLufs,
+      targetMode: state.targetMode,
+      customTargetLufs: state.customTargetLufs,
+      opacity: state.panelOpacity,
+      collapsed: state.panelCollapsed,
+      panelPos: {
+        x: Number.isFinite(state.panelPos.x) ? Math.round(state.panelPos.x) : null,
+        y: Number.isFinite(state.panelPos.y) ? Math.round(state.panelPos.y) : null,
+      },
     });
   }
 
+  function saveSettingsSoon() {
+    if (state.saveTimer) clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(() => {
+      state.saveTimer = null;
+      saveSettings().catch(() => {});
+    }, 350);
+  }
+
   function cacheKeyList(info = state.contextInfo) {
+    if (!info || info.live) return [];
     const keys = [];
-    if (info && info.bv) keys.push(`v:${info.bv}`);
-    if (info && info.mid) keys.push(`u:${info.mid}`);
+    if (info.bv) keys.push(`v:${info.bv}`);
+    if (info.mid) keys.push(`u:${info.mid}`);
     return keys;
   }
 
@@ -662,15 +1339,33 @@
   // 播放器与页面上下文
   // ---------------------------------------------------------------------------
 
+  function getLiveRoomId() {
+    if (location.hostname === 'live.bilibili.com') {
+      const match = location.pathname.match(/^\/(?:blanc\/)?(\d+)/i);
+      if (match) return match[1];
+    }
+    if (location.pathname.startsWith('/blackboard/live/') || location.pathname.startsWith('/live/')) {
+      const pathMatch = location.pathname.match(/\/(\d+)(?:\/|$)/);
+      if (pathMatch) return pathMatch[1];
+      const queryMatch = location.search.match(/[?&](?:room_id|roomId)=(\d+)/i);
+      if (queryMatch) return queryMatch[1];
+    }
+    return '';
+  }
+
   function readContext() {
     const match = location.pathname.match(/\/video\/(BV[0-9A-Za-z]+)/i)
       || location.search.match(/[?&]bvid=(BV[0-9A-Za-z]+)/i);
     const bv = match ? match[1] : '';
+    const roomId = getLiveRoomId();
+    const live = Boolean(roomId);
 
     let mid = '';
     let upName = '';
     const upLink = document.querySelector(
-      '.up-name, .up-info-container .up-name, .up-detail .up-name, a.up-name'
+      live
+        ? '#head-info-vm .up-name, .room-owner-username, .up-name, a[href*="space.bilibili.com"]'
+        : '.up-name, .up-info-container .up-name, .up-detail .up-name, a.up-name'
     ) || document.querySelector('a[href*="space.bilibili.com"]');
     if (upLink) {
       const anchor = upLink.closest('a') || upLink;
@@ -680,29 +1375,80 @@
       upName = (upLink.textContent || '').trim();
     }
 
-    const titleEl = document.querySelector('h1.video-title, .video-title, h1[title]');
+    const titleEl = document.querySelector(
+      live
+        ? 'h1.live-room-title, .room-title, #live-title, h1[title]'
+        : 'h1.video-title, .video-title, h1[title]'
+    );
     const title = titleEl
       ? (titleEl.getAttribute('title') || titleEl.textContent || '').trim()
-      : (document.title || '').replace(/_哔哩哔哩.*$/, '').trim();
+      : (document.title || '').replace(/[_\-|]\s*(哔哩哔哩直播|哔哩哔哩).*$/, '').trim();
+
+    let key;
+    if (live) key = `l:${roomId}`;
+    else if (bv) key = `v:${bv}`;
+    else key = `p:${location.pathname}${location.search}`;
 
     return {
-      key: bv ? `v:${bv}` : `p:${location.pathname}${location.search}`,
+      key,
       bv,
       mid,
       upName,
       title,
+      live,
+      roomId,
     };
   }
 
   function isVisible(el) {
     if (!el || !el.isConnected) return false;
-    const style = getComputedStyle(el);
+    const view = el.ownerDocument && el.ownerDocument.defaultView ? el.ownerDocument.defaultView : window;
+    const style = view.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
     return true;
   }
 
+  function collectVideosFromDocument(doc, depth = 0, videos = []) {
+    videos.push(...Array.from(doc.querySelectorAll('video')));
+    if (depth >= 2) return videos;
+    for (const frame of Array.from(doc.querySelectorAll('iframe'))) {
+      try {
+        const frameDocument = frame.contentDocument;
+        if (frameDocument) collectVideosFromDocument(frameDocument, depth + 1, videos);
+      } catch {
+        // 跨域 iframe 跳过
+      }
+    }
+    return videos;
+  }
+
+  function collectVideos() {
+    // B 站直播的播放器可能放在同源的 blanc iframe（甚至嵌套 iframe）里，
+    // 顶层脚本仍然可以直接拿到 video 元素并接入 Web Audio。
+    return collectVideosFromDocument(document);
+  }
+
+  function bindFrameGestures(doc = document, depth = 0) {
+    for (const frame of Array.from(doc.querySelectorAll('iframe'))) {
+      let frameDocument;
+      try {
+        frameDocument = frame.contentDocument;
+      } catch {
+        continue;
+      }
+      if (!frameDocument) continue;
+      if (frame.__bvbGestureBound !== frameDocument) {
+        frame.__bvbGestureBound = frameDocument;
+        frameDocument.addEventListener('pointerdown', onGesture, true);
+        frameDocument.addEventListener('keydown', onGesture, true);
+        frameDocument.addEventListener('touchstart', onGesture, true);
+      }
+      if (depth < 2) bindFrameGestures(frameDocument, depth + 1);
+    }
+  }
+
   function findMainVideo() {
-    const videos = Array.from(document.querySelectorAll('video'));
+    const videos = collectVideos();
     let best = null;
     let bestScore = -Infinity;
 
@@ -714,7 +1460,7 @@
       let score = rect.width * rect.height;
       if (!video.paused && !video.ended) score += 100000000;
       if (!video.muted && video.volume > 0) score += 50000000;
-      if (video.closest('#bilibili-player, .bpx-player-container, .bilibili-player-video, .bpx-player-video-area')) {
+      if (video.closest('#bilibili-player, .bpx-player-container, .bilibili-player-video, .bpx-player-video-area, #live-player, .live-player, .live-player-mount, #player-wrap, .web-player')) {
         score += 200000000;
       }
       if (score > bestScore) {
@@ -1203,6 +1949,10 @@
 
   async function tick() {
     ensurePanel();
+    bindFrameGestures();
+    const fullscreen = detectFullscreen();
+    if (fullscreen !== state.isFullscreen) handleFullscreenChange(fullscreen);
+
     const info = readContext();
     if (info.key !== state.key) {
       await onNewContext(info);
@@ -1245,14 +1995,6 @@
     updateUI();
   }
 
-  function placePanel() {
-    if (!state.panel) return;
-    const fs = document.fullscreenElement;
-    const parent = fs && fs.tagName !== 'VIDEO' ? fs : (document.body || document.documentElement);
-    if (state.panel.parentElement !== parent) parent.appendChild(state.panel);
-    state.panel.style.bottom = fs ? '22px' : '';
-  }
-
   async function onGesture() {
     if (state.gestureBusy) return;
     state.gestureBusy = true;
@@ -1278,8 +2020,25 @@
         state.ctx.resume().catch(() => {});
       }
     });
-    document.addEventListener('fullscreenchange', placePanel);
+    document.addEventListener('fullscreenchange', () => handleFullscreenChange());
+    document.addEventListener('webkitfullscreenchange', () => handleFullscreenChange());
+    window.addEventListener('resize', () => {
+      if (state.resizeTimer) clearTimeout(state.resizeTimer);
+      state.resizeTimer = setTimeout(() => {
+        state.resizeTimer = null;
+        if (state.isFullscreen && state.dockSide) {
+          setDockHidden(state.dockHidden);
+        } else {
+          clampPanelPosition();
+        }
+      }, 120);
+    });
     window.addEventListener('pagehide', () => {
+      if (state.saveTimer) {
+        clearTimeout(state.saveTimer);
+        state.saveTimer = null;
+      }
+      saveSettings().catch(() => {});
       if (state.meterData && Number.isFinite(state.meterData.integrated)) {
         writeCache(volumeCompensatedLufs(state.meterData.integrated)).catch(() => {});
       }
@@ -1289,6 +2048,7 @@
   async function boot() {
     ensurePanel();
     await loadSettings();
+    applyPanelState();
     installGestureHandlers();
     updateUI(true);
     state.tickTimer = setInterval(() => {
@@ -1313,6 +2073,21 @@
       fallbackMode: state.fallbackMode,
       extApi: extApi ? extApi.name : 'page',
       unsupportedReason: state.unsupportedReason,
+      live: Boolean(state.contextInfo && state.contextInfo.live),
+      panel: state.els
+        ? {
+          collapsed: state.panel.dataset.collapsed,
+          fullscreen: state.panel.dataset.fullscreen,
+          docked: state.panel.dataset.docked || '',
+          dockHidden: state.panel.dataset.dockHidden || '',
+          opacity: state.panel.style.opacity,
+          left: state.panel.style.left,
+          top: state.panel.style.top,
+          miniDisplay: getComputedStyle(state.els.mini).display,
+          targetMode: state.targetMode,
+          targetLufs: state.targetLufs,
+        }
+        : null,
     });
     window.__bvbForceAttach = () => {
       if (state.video) return attach(state.video);

@@ -1,6 +1,6 @@
 # B站音量均衡器
 
-一个 Chrome / Edge / Firefox 扩展：自动测量 B 站网页视频的响度，把「这个 UP 主声音特别小、那个 UP 主声音特别大」拉回到同一水平。
+一个 Chrome / Edge / Firefox 扩展：自动测量 B 站网页视频和直播的响度，把「这个 UP 主声音特别小、那个 UP 主声音特别大」拉回到同一水平。
 
 [GitHub 仓库](https://github.com/axggdzz/bilibili-volume-balancer) · [Firefox 版（addons.mozilla.org）](https://addons.mozilla.org/firefox/addon/b%E7%AB%99%E9%9F%B3%E9%87%8F%E5%9D%87%E8%A1%A1%E5%99%A8/) · [下载最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest)
 
@@ -8,9 +8,16 @@
 
 ![控制面板](docs/panel.png)
 
-> 当前版本：`0.2.1`，面向桌面版 Chrome / Edge / Firefox 的 B 站网页播放器。B 站 App、手机浏览器、番剧 DRM 内容暂不支持。
+> 当前版本：`0.3.0`，面向桌面版 Chrome / Edge / Firefox 的 B 站网页视频与直播。B 站 App、手机浏览器、番剧 DRM 内容暂不支持。
 >
 > 这是一个非官方项目，与哔哩哔哩无隶属关系。「B站 / 哔哩哔哩 / Bilibili」等名称和页面元素的权利归其权利人所有；本项目不下载、不修改、不重新分发 B 站内容。文档截图仅用于说明扩展功能。
+
+### 0.3.0 新增
+
+- 面板可拖动到任意位置，支持透明度调节，可收起成小图标
+- 视频全屏时自动收起并贴边隐藏，鼠标移入再滑出；退出全屏恢复原来的位置和状态
+- 支持 B 站直播（包括播放器在同源 iframe 里的情况）
+- 目标响度增加「手动」挡位，可输入 `-40 … 0 LUFS` 之间的任意值
 
 ---
 
@@ -20,7 +27,9 @@
 
 已上架 [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/b%E7%AB%99%E9%9F%B3%E9%87%8F%E5%9D%87%E8%A1%A1%E5%99%A8/)，打开页面点「添加到 Firefox」即可，之后新版本自动更新。
 
-离线或内网环境：下载 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 里的 `bilibili-volume-balancer-0.2.1-signed.xpi`，用 Firefox 打开安装（已由 Mozilla 签名）。
+> AMO 上架版本可能滞后于 GitHub；`0.3.0` 的 Firefox 包需要重新提交 AMO 审核/签名。想先试用新功能，可以下载最新 Release 的 `bilibili-volume-balancer-firefox.zip`，用 `about:debugging` 临时载入。
+
+离线或内网环境：下载 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 里的 `bilibili-volume-balancer-firefox.zip`，用 Firefox 的 `about:debugging` 临时载入；正式侧载需要 Mozilla 签名，签名包由 AMO 发布流程产出。
 
 ### Chrome / Edge
 
@@ -45,13 +54,21 @@
 面板在播放器右下角：
 
 - **开关**：关闭后完全不改动声音，但仍会继续测量。
+- **拖动**：按住面板顶部标题区域拖动；位置会记住。
+- **收起**：点标题右侧的向上箭头收成一个小图标；点小图标重新展开。
+- **透明度**：底部滑块可把面板调到 30%–100%，适合不想遮挡画面时使用。
 - **目标响度**：
   - `夜间 -20`：整体更轻，适合深夜
   - `偏轻 -18`
-  - `标准 -16`：默认，接近大多数网络视频的常见水平
+  - `标准 -16`：默认，建议先用这个
   - `偏响 -14`
+  - `手动`：自己输入 `-40 … 0 LUFS` 之间的目标值
 - **读数**：当前视频的参考响度（LUFS）和正在施加的增益（dB）。
 - **重新测量**：清空当前视频的测量历史，重新开始；不会删除历史缓存。
+
+视频全屏时，面板会自动收成小图标并贴到屏幕边缘，只露一小条；鼠标移过去会滑出，移开后再次隐藏。退出全屏会恢复全屏前的位置和展开状态。
+
+B 站直播也支持：普通直播页和播放器位于同源 `blanc` iframe 的情况都可以接管；直播流会持续校准，不会使用房间历史缓存。
 
 首次打开一个视频时，会先测量约 3 秒再开始校正；约 6 秒后会用更完整的 integrated loudness 再精调一次。之后每个视频、每位 UP 主的测量结果会缓存在本机，下次打开可以直接套用，再在后台慢慢修正。
 
@@ -69,12 +86,14 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
 |---|---|
 | 左上角状态文字 | 当前在做什么。`已均衡 · 参考 -13.4 LUFS` 表示已经接管并稳定；`测量中 · 1.4 秒` 表示还在收集样本；`点击页面空白处启用` 表示浏览器还没拿到用户手势；`视频已静音` 表示 B 站播放器处于静音状态。 |
 | 右上角开关 | 粉色是开启，灰色是关闭。关闭后不施加任何增益，但测量和缓存仍会继续。 |
+| 右上角收起箭头 | 把面板收成小图标，减少遮挡。 |
 | 中间彩色条 | 当前视频响度在 `-40 … 0 LUFS` 里的位置。绿色偏轻，粉色偏响；白色竖线是目标位置（默认 `-16 LUFS`）。填充在竖线左边说明视频偏轻、会被提升；在右边说明偏响、会被衰减。 |
 | 左侧大数字 | 当前视频的参考响度，单位 LUFS。数字越小越轻：`-30` 很轻，`-10` 很响。扩展会把大多数视频拉向目标值。 |
 | 右侧 dB | 扩展实际施加的增益。`+` 是提升，`−` 是衰减。例如视频 `-13.4 LUFS`、目标 `-16 LUFS`，就应该衰减约 `-2.6 dB`。 |
-| 目标下拉框 | `夜间 -20` 最轻，`偏轻 -18`，`标准 -16` 默认，`偏响 -14`。切换后会立即按新目标重算增益。 |
+| 目标下拉框 | `夜间 -20` 最轻，`偏轻 -18`，`标准 -16` 默认，`偏响 -14`；选「手动」后可直接输入 `-40 … 0` 的 LUFS 值。 |
+| 透明度滑块 | 调节面板的不透明度，最低 30%。 |
 | 重新测量 | 清空当前视频的测量历史，增益先回到 `0 dB`，几秒后重新校正。不会删除已经保存的历史缓存。 |
-| 底部小字 | 当前状态说明，例如“测量只在本机进行”或“已按这位 UP 主的历史响度校准”。 |
+| 底部小字 | 当前状态说明，例如“测量只在本机进行”“已按这位 UP 主的历史响度校准”或“直播流会持续校准”。 |
 
 读数的直觉解释：
 
@@ -97,6 +116,20 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
 | `无法测量此视频的音频` | 可能是版权/DRM 或 Web Audio 接管失败，声音会保持原样。 |
 
 一句话：**平时只需要看状态有没有变成“已均衡”，以及右边 dB 是正还是负；其他都可以不用管。**
+
+全屏时：
+
+- 进入全屏会自动收成小图标，贴到屏幕边缘，只留约 16 px 可点击区域；
+- 鼠标移到小图标上会滑出，移开约 1.6 秒后再次贴边隐藏；
+- 点小图标可以展开完整面板，点标题右侧的收起箭头可以再次收起；
+- 退出全屏会恢复全屏前的展开状态和位置。
+
+直播时：
+
+- 状态和读数逻辑与视频一致；
+- 目标同样可以选预设或手动；
+- 直播流不会写入房间缓存，避免把上一场直播的电平套到下一场；
+- 部分直播播放器在 `live.bilibili.com/blanc/...` 的 iframe 中，扩展会自动找到同源 iframe 里的 `<video>` 并接管。
 
 ---
 
@@ -145,7 +178,8 @@ B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从�
 
 ## 已知限制
 
-- **只支持 B 站网页版**：`/video/`、`/list/`、`/medialist/play/`。B 站 App、手机浏览器、电视端不覆盖。
+- **只支持 B 站网页版**：视频 `/video/`、`/list/`、`/medialist/play/`，以及直播 `/live/`、`live.bilibili.com`、`/blackboard/live/`。B 站 App、手机浏览器、电视端不覆盖。
+- **直播播放器可能在 iframe 中**：扩展会尝试读取同源 `blanc` iframe；跨域 iframe 或平台改版后找不到 `<video>` 时，只能等适配。
 - **番剧 / DRM 内容未纳入**：受 DRM 保护的媒体可能无法被 Web Audio 接管，强行接入可能静音，所以默认不匹配 `/bangumi/play/`。
 - **需要一次点击**：Chrome / Edge / Firefox 的自动播放策略都会让新建的 `AudioContext` 处于 suspended，必须在页面上点一下才能启动。
 - **Firefox 需要签名**：正式版只安装已签名的扩展。已经上架 AMO，正常安装不受影响；自己改代码测试时用 `about:debugging` 临时载入，或用 Developer Edition 关闭 `xpinstall.signatures.required` 后侧载。
@@ -170,6 +204,8 @@ bilibili-volume-balancer/
 │   ├── loudness.test.mjs      # 算法单元测试
 │   └── e2e/
 │       ├── harness.html       # Chromium 测试页（页面内注入 content.js）
+│       ├── iframe-harness.html # 同源 iframe 测试页（模拟直播播放器）
+│       ├── iframe-frame.html  # iframe 里的 <video>
 │       ├── firefox-harness.html # Firefox 测试页（由真实扩展注入）
 │       ├── level-test.webm    # 前 10 秒安静、后 20 秒大声的测试视频
 │       ├── run.mjs            # 启动 Edge/Chrome 并读取实际增益
@@ -207,6 +243,9 @@ node tools/pack.mjs
 # Chromium：需要本机有 Edge 或 Chrome
 node test/e2e/run.mjs
 
+# 同源 iframe：模拟直播播放器在 iframe 里的情况
+node test/e2e/run.mjs iframe-harness.html
+
 # Firefox：需要本机有 Firefox，并且先 npm install（会装 web-ext）
 npm install
 node test/e2e/run-firefox.mjs
@@ -226,11 +265,15 @@ Chromium 测试会在页面里直接注入 `content.js`，验证音频图与增�
 - 全静音不产生有效 integrated loudness
 - `reset` 后历史清空
 - Chromium 中：44.1 kHz 采样率、AudioWorklet 加载、视频接管、增益方向、B 站音量 50% 时增益不变
+- Chromium UI：拖动、收起/展开、透明度、手动目标响度、全屏自动收起/贴边隐藏/退出恢复
+- 同源 iframe 中：跨文档找到 `<video>` 并接入 Web Audio、播放器内点击可激活 AudioContext
 - Firefox 中：清单与内容脚本注入、`browser.storage.local` 缓存、`moz-extension://` 资源加载、AudioWorklet 测量、增益方向
 
-当前结果：算法测试 7/7 通过；Chromium 端到端通过（安静段 `+15.0 dB`，大声段 `-4.1 dB`，50% 音量下仍为 `-4.1 dB`）；Firefox 160 端到端通过（扩展临时加载成功，安静段 `+15.0 dB`，大声段 `-4.0 dB`，参考 `-11.8 LUFS`，未退到兼容模式）。
+当前结果：算法测试 7/7 通过；Chromium 端到端通过（安静段 `+15.0 dB`，大声段约 `-4 dB`，50% 音量下增益不变，拖动/收起/透明度/手动目标/全屏贴边均通过）；同源 iframe 测试通过；Firefox 160 端到端通过（扩展临时加载成功，安静段 `+15.0 dB`，大声段 `-4.0 dB`，参考 `-11.8 LUFS`，未退到兼容模式）。
 
 另外已在真实 B 站页面（Edge 157，`BV1GJ411x7h7`）验证：面板正常出现，测得参考 `-13.3 LUFS`，施加 `-2.4 dB`，控制台无报错。线上播放器 DOM 会随 B 站改版变化，如果面板一直显示"等待视频播放"，请附上播放器截图反馈。
+
+直播页面在无头浏览器里会被 B 站反爬到 `ENTER-FAILURE`，没有自动跑通真实房间播放；因此直播链路用同源 iframe 测试页验证了"找到 iframe 里的 `<video>`、接入 Web Audio、在播放器内点击激活"这几步。实际直播房间还需要你在正常浏览器里确认一次。
 
 ---
 

@@ -269,7 +269,35 @@ Firefox 用另一套测试（`test/e2e/run-firefox.mjs`）：`web-ext` 把仓库
 
 ---
 
-## 10. 后续路线
+## 10. 0.3.0：面板交互与直播
+
+### 10.1 面板
+
+- 面板用 `position: fixed` + `left/top` 定位，拖动时直接更新坐标；位置写入 `settings.panelPos`。
+- 收起状态只保留 46×46 的小图标；展开/收起会重建 host 尺寸并重新 clamp 到视口内。
+- 透明度由 `state.panelOpacity` 控制，作用在 host 上，因此面板和图标一起变淡。
+- 全屏时强制收起，并根据面板中心选择左/右贴边；隐藏时只留 16 px 可点击区域，`pointerenter` 滑出，`pointerleave` 后延时隐藏。
+- 退出全屏恢复 `preFullscreen` 保存的展开状态和坐标。
+
+### 10.2 直播
+
+B 站直播的播放器经常在 `live.bilibili.com/blanc/<room>` 的同源 iframe 里。顶层 content script：
+
+1. 遍历顶层 `<video>` 和同源 iframe 的 `document.querySelectorAll('video')`；
+2. 用 `ownerDocument.defaultView.getComputedStyle` 判断可见性；
+3. 对 iframe 内的 `<video>` 调 `createMediaElementSource`，实际验证可行；
+4. 给 iframe 文档绑定 `pointerdown`，让用户在播放器里点击也能 resume AudioContext；
+5. 如果 iframe 进入原生全屏，顶层 `fullscreenElement` 是 `<iframe>`，把面板 `adoptNode` 到 iframe 文档里，退出后再移回。
+
+直播不写房间响度缓存：同一房间上一场和下一场的电平可能完全不同，缓存反而会造成误判。
+
+### 10.3 手动目标
+
+`targetLufs` 依旧是数值，`targetMode` 区分 preset/custom。手动输入 clamp 到 `-40 … 0 LUFS`，按 0.1 LU 取整；设置与预设一起持久化。增益、限幅、缓存逻辑完全复用。
+
+---
+
+## 11. 后续路线
 
 1. **真峰值限幅 Worklet**：look-ahead 5 ms，ceiling `-1 dBTP`，替代 `DynamicsCompressor`。
 2. **按 UP 主先验**：用历史中位数作为初始值，缩短首次校正时间。
