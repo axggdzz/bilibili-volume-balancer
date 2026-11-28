@@ -218,6 +218,17 @@ async function run() {
     const halfVolume = await evaluate('window.__bvbDebug ? window.__bvbDebug() : null');
     await evaluate(`${videoExpression}.volume = 1; true`);
 
+    // 均衡稳定 5 秒后应自动收起。等待并记录，再手动展开继续测 UI。
+    let autoMinimized = await evaluate('window.__bvbDebug()');
+    if (!autoMinimized || !autoMinimized.panel || autoMinimized.panel.collapsed !== 'true') {
+      await sleep(5500);
+      autoMinimized = await evaluate('window.__bvbDebug()');
+    }
+    if (autoMinimized && autoMinimized.panel && autoMinimized.panel.collapsed === 'true') {
+      await evaluate(`document.getElementById('bvb-panel-host').shadowRoot.getElementById('bvb-mini').click(); true`);
+      await sleep(300);
+    }
+
     const panelBefore = await evaluate(`(() => {
       const host = document.getElementById('bvb-panel-host');
       const shadow = host.shadowRoot;
@@ -308,6 +319,7 @@ async function run() {
       quiet,
       loud,
       halfVolume,
+      autoMinimized,
       ui: { panelBefore, collapsed, expanded, faded, customTarget, dragged, fullscreen, savedSettings },
     }, null, 2));
 
@@ -322,6 +334,10 @@ async function run() {
       failures.push(`50% 音量时增益不应变化，实际 ${halfVolume && halfVolume.appliedDb}（100% 时 ${loud.appliedDb}）`);
     }
     if (!collapsed || !collapsed.panel || collapsed.panel.collapsed !== 'true') failures.push('面板未收起');
+    if (!autoMinimized || !autoMinimized.panel || autoMinimized.panel.collapsed !== 'true'
+      || autoMinimized.panel.autoMinimized !== true) {
+      failures.push('均衡完成 5 秒后面板未自动最小化');
+    }
     if (!expanded || !expanded.panel || expanded.panel.collapsed !== 'false') failures.push('面板未展开');
     if (!faded || !faded.panel || Math.abs(Number.parseFloat(faded.panel.opacity) - 0.6) > 0.08) {
       failures.push(`透明度未生效，实际 ${faded && faded.panel && faded.panel.opacity}`);

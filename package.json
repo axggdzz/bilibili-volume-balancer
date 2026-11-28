@@ -1,6 +1,6 @@
 {
   "name": "bilibili-volume-balancer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "B站网页视频/直播响度均衡扩展（Chrome / Edge / Firefox）",
   "author": "axggdzz",

@@ -102,6 +102,9 @@
     lastUI: {},
     panelOpacity: 1,
     panelCollapsed: false,
+    autoMinimized: false,
+    autoMinimizeDone: false,
+    autoMinimizeTimer: null,
     fullscreenExpanded: false,
     isFullscreen: false,
     preFullscreen: null,
@@ -742,6 +745,9 @@
     setupDrag(state.els.mini, true);
 
     state.els.mini.dataset.tone = 'muted';
+    host.addEventListener('pointerdown', notePanelInteraction, true);
+    state.els.panel.addEventListener('input', notePanelInteraction);
+    state.els.panel.addEventListener('keydown', notePanelInteraction);
     host.addEventListener('pointerenter', () => {
       clearDockTimer();
       if (state.isFullscreen && effectiveCollapsed() && state.dockHidden) {
@@ -881,6 +887,7 @@
       foot = '测量只在本机进行，不会上传任何数据。';
     }
     if (state.els.foot.textContent !== foot) state.els.foot.textContent = foot;
+    syncAutoMinimize();
   }
 
   // ---------------------------------------------------------------------------
@@ -888,7 +895,72 @@
   // ---------------------------------------------------------------------------
 
   function effectiveCollapsed() {
-    return state.isFullscreen ? !state.fullscreenExpanded : state.panelCollapsed;
+    if (state.isFullscreen) return !state.fullscreenExpanded;
+    return state.panelCollapsed || state.autoMinimized;
+  }
+
+  function isBalancedReady() {
+    if (!state.enabled || state.isFullscreen) return false;
+    if (!state.ctx || state.ctx.state !== 'running' || !state.video) return false;
+    if (state.video.muted || state.video.volume <= 0) return false;
+    if (state.unsupportedReason && !state.fallbackMode) return false;
+    const meter = state.meterData;
+    if (!meter || !Number.isFinite(meter.blocks) || meter.blocks < 25) return false;
+    const measured = Number.isFinite(meter.integrated) ? meter.integrated : meter.shortTerm;
+    return Number.isFinite(measured) && meter.peak > 1e-5;
+  }
+
+  function clearAutoMinimizeTimer() {
+    if (state.autoMinimizeTimer) {
+      clearTimeout(state.autoMinimizeTimer);
+      state.autoMinimizeTimer = null;
+    }
+  }
+
+  function syncAutoMinimize() {
+    if (state.autoMinimizeDone) {
+      clearAutoMinimizeTimer();
+      return;
+    }
+    if (!isBalancedReady() || effectiveCollapsed()) {
+      clearAutoMinimizeTimer();
+      return;
+    }
+    if (!state.autoMinimizeTimer) {
+      state.autoMinimizeTimer = setTimeout(fireAutoMinimize, 5000);
+    }
+  }
+
+  function fireAutoMinimize() {
+    state.autoMinimizeTimer = null;
+    if (state.autoMinimizeDone || !isBalancedReady() || effectiveCollapsed()) return;
+
+    const focused = state.els && state.els.shadow ? state.els.shadow.activeElement : null;
+    const focusedInside = focused && focused !== state.els.panel;
+    if (state.drag || (state.panel && state.panel.matches(':hover')) || focusedInside) {
+      state.autoMinimizeTimer = setTimeout(fireAutoMinimize, 2000);
+      return;
+    }
+
+    state.autoMinimizeDone = true;
+    state.autoMinimized = true;
+    applyPanelState();
+    requestAnimationFrame(() => {
+      if (!state.isFullscreen) setPosition(state.panelPos.x, state.panelPos.y);
+      refreshTargetUI();
+    });
+  }
+
+  function notePanelInteraction() {
+    if (state.autoMinimizeDone) return;
+    clearAutoMinimizeTimer();
+    syncAutoMinimize();
+  }
+
+  function resetAutoMinimize() {
+    clearAutoMinimizeTimer();
+    state.autoMinimized = false;
+    state.autoMinimizeDone = false;
   }
 
   function hostSize() {
@@ -1013,6 +1085,9 @@
     if (state.isFullscreen) {
       state.fullscreenExpanded = !collapsed;
     } else {
+      state.autoMinimizeDone = true;
+      state.autoMinimized = false;
+      clearAutoMinimizeTimer();
       state.panelCollapsed = collapsed;
     }
     state.dockHidden = false;
@@ -1174,6 +1249,7 @@
       state.isFullscreen = true;
       state.fullscreenExpanded = false;
       state.dockHidden = false;
+      clearAutoMinimizeTimer();
       placePanel();
       const { width } = hostSize();
       state.dockSide = state.panelPos.x + width / 2 < window.innerWidth / 2 ? 'left' : 'right';
@@ -1935,6 +2011,8 @@
     state.cachedLufs = null;
     state.lastCacheBlocks = 0;
     resetMeter(true);
+    resetAutoMinimize();
+    applyPanelState();
 
     const cached = lookupCache(info);
     if (cached) {
@@ -1978,12 +2056,16 @@
     if (video !== state.video) {
       state.video = video;
       state.currentSrc = video.currentSrc;
+      resetAutoMinimize();
+      applyPanelState();
     }
     if (state.ctx && state.ctx.state === 'running' && state.attachedVideo !== video) {
       await attach(video);
     } else if (video.currentSrc && state.currentSrc && video.currentSrc !== state.currentSrc) {
       state.currentSrc = video.currentSrc;
       resetMeter(true);
+      resetAutoMinimize();
+      applyPanelState();
       state.lastCacheBlocks = 0;
       const cached = lookupCache();
       if (cached && state.enabled) {
@@ -2086,6 +2168,8 @@
           miniDisplay: getComputedStyle(state.els.mini).display,
           targetMode: state.targetMode,
           targetLufs: state.targetLufs,
+          autoMinimized: state.autoMinimized,
+          autoMinimizeDone: state.autoMinimizeDone,
         }
         : null,
     });

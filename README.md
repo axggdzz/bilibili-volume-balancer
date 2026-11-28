@@ -8,9 +8,15 @@
 
 ![控制面板](docs/panel.png)
 
-> 当前版本：`0.3.0`，面向桌面版 Chrome / Edge / Firefox 的 B 站网页视频与直播。B 站 App、手机浏览器、番剧 DRM 内容暂不支持。
+> 当前版本：`0.3.1`，面向桌面版 Chrome / Edge / Firefox 的 B 站网页视频与直播。B 站 App、手机浏览器、番剧 DRM 内容暂不支持。
 >
 > 这是一个非官方项目，与哔哩哔哩无隶属关系。「B站 / 哔哩哔哩 / Bilibili」等名称和页面元素的权利归其权利人所有；本项目不下载、不修改、不重新分发 B 站内容。文档截图仅用于说明扩展功能。
+
+### 0.3.1 新增
+
+- 测量和音量均衡稳定 **5 秒**后，面板自动收起成小图标。
+- 自动收起不会写入“用户手动收起”的偏好；切换视频后会重新展开并等待下一次自动收起。
+- 鼠标停留在面板上、正在拖动或正在输入时不会强行收起；手动展开后本次视频不再自动收起。
 
 ### 0.3.0 新增
 
@@ -27,7 +33,7 @@
 
 已上架 [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/b%E7%AB%99%E9%9F%B3%E9%87%8F%E5%9D%87%E8%A1%A1%E5%99%A8/)，打开页面点「添加到 Firefox」即可，之后新版本自动更新。
 
-> AMO 上架版本可能滞后于 GitHub；`0.3.0` 的 Firefox 包需要重新提交 AMO 审核/签名。想先试用新功能，可以下载最新 Release 的 `bilibili-volume-balancer-firefox.zip`，用 `about:debugging` 临时载入。
+> AMO 上架版本可能滞后于 GitHub；`0.3.1` 的 Firefox 包需要重新提交 AMO 审核/签名。想先试用新功能，可以下载最新 Release 的 `bilibili-volume-balancer-firefox.zip`，用 `about:debugging` 临时载入。
 
 离线或内网环境：下载 [最新 Release](https://github.com/axggdzz/bilibili-volume-balancer/releases/latest) 里的 `bilibili-volume-balancer-firefox.zip`，用 Firefox 的 `about:debugging` 临时载入；正式侧载需要 Mozilla 签名，签名包由 AMO 发布流程产出。
 
@@ -71,6 +77,8 @@
 B 站直播也支持：普通直播页和播放器位于同源 `blanc` iframe 的情况都可以接管；直播流会持续校准，不会使用房间历史缓存。
 
 首次打开一个视频时，会先测量约 3 秒再开始校正；约 6 秒后会用更完整的 integrated loudness 再精调一次。之后每个视频、每位 UP 主的测量结果会缓存在本机，下次打开可以直接套用，再在后台慢慢修正。
+
+当状态稳定为“已均衡”并且没有正在操作面板时，**5 秒后面板会自动收成小图标**，减少遮挡。点小图标可以重新展开；手动展开后这次视频不会再自动收起。切换视频会重新展开并重新计时。
 
 B 站自己的音量条仍然有效。扩展会把 `video.volume` 的影响从测量里扣掉，所以你调小 B 站音量时，它不会反过来把声音补回去。
 
@@ -265,11 +273,11 @@ Chromium 测试会在页面里直接注入 `content.js`，验证音频图与增�
 - 全静音不产生有效 integrated loudness
 - `reset` 后历史清空
 - Chromium 中：44.1 kHz 采样率、AudioWorklet 加载、视频接管、增益方向、B 站音量 50% 时增益不变
-- Chromium UI：拖动、收起/展开、透明度、手动目标响度、全屏自动收起/贴边隐藏/退出恢复
+- Chromium UI：拖动、收起/展开、透明度、手动目标响度、全屏自动收起/贴边隐藏/退出恢复、均衡完成 5 秒后自动最小化
 - 同源 iframe 中：跨文档找到 `<video>` 并接入 Web Audio、播放器内点击可激活 AudioContext
 - Firefox 中：清单与内容脚本注入、`browser.storage.local` 缓存、`moz-extension://` 资源加载、AudioWorklet 测量、增益方向
 
-当前结果：算法测试 7/7 通过；Chromium 端到端通过（安静段 `+15.0 dB`，大声段约 `-4 dB`，50% 音量下增益不变，拖动/收起/透明度/手动目标/全屏贴边均通过）；同源 iframe 测试通过；Firefox 160 端到端通过（扩展临时加载成功，安静段 `+15.0 dB`，大声段 `-4.0 dB`，参考 `-11.8 LUFS`，未退到兼容模式）。
+当前结果：算法测试 7/7 通过；Chromium 端到端通过（安静段 `+15.0 dB`，大声段约 `-4 dB`，50% 音量下增益不变，拖动/收起/透明度/手动目标/全屏贴边/自动最小化均通过）；同源 iframe 测试通过；Firefox 160 端到端通过（扩展临时加载成功，安静段 `+15.0 dB`，大声段 `-4.0 dB`，参考 `-11.8 LUFS`，未退到兼容模式）。
 
 另外已在真实 B 站页面（Edge 157，`BV1GJ411x7h7`）验证：面板正常出现，测得参考 `-13.3 LUFS`，施加 `-2.4 dB`，控制台无报错。线上播放器 DOM 会随 B 站改版变化，如果面板一直显示"等待视频播放"，请附上播放器截图反馈。
 

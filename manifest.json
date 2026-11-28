@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "B站音量均衡器",
   "short_name": "B站音量均衡",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "自动测量 B 站视频/直播响度，把忽大忽小的声音拉齐；只在本机处理，不上传数据。",
   "browser_specific_settings": {
     "gecko": {

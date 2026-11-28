@@ -297,7 +297,27 @@ B 站直播的播放器经常在 `live.bilibili.com/blanc/<room>` 的同源 ifra
 
 ---
 
-## 11. 后续路线
+## 11. 0.3.1：自动最小化
+
+`isBalancedReady()` 在以下条件同时满足时为真：
+
+- 扩展开启、AudioContext 运行、找到主视频；
+- 视频未静音且音量大于 0；
+- 没有不可恢复的接管错误；
+- 已经收到至少 25 个 400 ms 块，并拿到有限的 integrated/short-term 值；
+- 峰值不是数字静音。
+
+一旦为真，`syncAutoMinimize()` 安排一个 5 秒定时器。定时器触发时：
+
+- 如果用户正在悬停、拖动或把焦点放在面板输入框里，延后 2 秒再试；
+- 否则设置 `autoMinimized=true`，通过 `effectiveCollapsed()` 让面板显示成小图标；
+- 不修改 `panelCollapsed`，也不写入设置，因此这是临时状态，不会覆盖“用户手动收起”的偏好。
+
+用户手动展开或收起时，`autoMinimizeDone=true`，本次视频不再自动收起。切换视频或 URL 时 `resetAutoMinimize()` 清空 `autoMinimized` 和 `autoMinimizeDone`，面板重新展开并等待下一轮。
+
+---
+
+## 12. 后续路线
 
 1. **真峰值限幅 Worklet**：look-ahead 5 ms，ceiling `-1 dBTP`，替代 `DynamicsCompressor`。
 2. **按 UP 主先验**：用历史中位数作为初始值，缩短首次校正时间。

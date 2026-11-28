@@ -51,12 +51,12 @@ dist/chrome/…、dist/firefox/…                       # 解压后的目录，
 1. 打 tag：
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 2. 在仓库页面进入 **Releases → Draft a new release**；
-3. 选择 `v0.3.0`，把两个 zip 都上传；
+3. 选择 `v0.3.1`，把两个 zip 都上传；
 4. 说明里分开写安装方式：
    - Chrome / Edge：解压 → 扩展页 → 开发者模式 → 加载已解压的扩展；
    - Firefox：`about:debugging#/runtime/this-firefox` → 临时载入附加组件 → 选 `manifest.json`。
